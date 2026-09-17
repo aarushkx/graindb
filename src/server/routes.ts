@@ -31,7 +31,7 @@ export function registerRoutes(app: FastifyInstance, store: KVStore): void {
             }
 
             try {
-                store.put(key, value);
+                await store.put(key, value);
             } catch (error) {
                 return reply.status(400).send({
                     error:
@@ -49,7 +49,7 @@ export function registerRoutes(app: FastifyInstance, store: KVStore): void {
         const { key } = request.params;
 
         try {
-            const value = store.get(key);
+            const value = await store.get(key);
             if (value === undefined) {
                 return reply.status(404).send({ error: "Key not found" });
             }
@@ -66,11 +66,23 @@ export function registerRoutes(app: FastifyInstance, store: KVStore): void {
         const { key } = request.params;
 
         try {
-            const deleted = store.delete(key);
+            const deleted = await store.delete(key);
             if (!deleted) {
                 return reply.status(404).send({ error: "Key not found" });
             }
             return reply.status(204).send();
+        } catch (error) {
+            return reply.status(400).send({
+                error:
+                    error instanceof Error ? error.message : "Invalid request",
+            });
+        }
+    });
+
+    app.get("/v1/kv/size", async (_request, reply) => {
+        try {
+            const size = await store.size();
+            return reply.status(200).send({ size });
         } catch (error) {
             return reply.status(400).send({
                 error:

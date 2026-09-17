@@ -7,23 +7,23 @@ export class InMemoryKVStore implements KVStore {
         this.store = new Map<string, string>();
     }
 
-    put(key: string, value: string): void {
+    async put(key: string, value: string): Promise<void> {
         this.validateKey(key);
         this.validateValue(value);
         this.store.set(key, value);
     }
 
-    get(key: string): string | undefined {
+    async get(key: string): Promise<string | undefined> {
         this.validateKey(key);
         return this.store.get(key);
     }
 
-    delete(key: string): boolean {
+    async delete(key: string): Promise<boolean> {
         this.validateKey(key);
         return this.store.delete(key);
     }
 
-    size(): number {
+    async size(): Promise<number> {
         return this.store.size;
     }
 
