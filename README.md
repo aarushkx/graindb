@@ -21,3 +21,5 @@ A small persistent key-value database served over HTTP
 - [x] Add sequential WAL write queue
 - [x] Fix append-and-sync to write the WAL record before syncing
 - [x] Ensure key/value survives server restart
+- [x] Implement graceful shutdown
+- [x] Properly close WAL file handles

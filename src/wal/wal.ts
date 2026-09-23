@@ -13,17 +13,23 @@ const CHECKSUM_SIZE = 4;
 export class WAL {
     private fileHandle: FileHandle | undefined;
 
-    // We perform multiple concurrent writes sequentially
+    // Serialize concurrent writes so WAL records are appended sequentially
     private writeQueue: Promise<void> = Promise.resolve();
+
+    private closed = false;
 
     constructor(private readonly filePath: string) {}
 
     async open(): Promise<void> {
+        if (this.fileHandle) return;
+        if (this.closed)
+            throw new Error("WAL cannot be reopened after closing");
         await mkdir(dirname(this.filePath), { recursive: true });
         this.fileHandle = await open(this.filePath, "a+");
     }
 
     async append(record: WalRecord): Promise<void> {
+        this.ensureOpen();
         this.writeQueue = this.writeQueue.then(async () => {
             await this.appendInternal(record);
         });
@@ -31,39 +37,33 @@ export class WAL {
     }
 
     async appendAndSync(record: WalRecord): Promise<void> {
+        this.ensureOpen();
         this.writeQueue = this.writeQueue.then(async () => {
-            if (!this.fileHandle) {
-                throw new Error("WAL is not open");
-            }
             await this.appendInternal(record);
-            await this.fileHandle.sync();
+            this.ensureOpen();
+            await this.fileHandle!.sync();
         });
         await this.writeQueue;
     }
 
     private async appendInternal(record: WalRecord): Promise<void> {
-        if (!this.fileHandle) {
-            throw new Error("WAL is not open");
-        }
+        this.ensureOpen();
         const buffer = serializeWalRecord(record);
-        await this.fileHandle.write(buffer);
+        await this.fileHandle!.write(buffer);
     }
 
     async sync(): Promise<void> {
-        if (!this.fileHandle) {
-            throw new Error("WAL is not open");
-        }
-        await this.fileHandle.sync();
+        this.ensureOpen();
+        await this.writeQueue;
+        this.ensureOpen();
+        await this.fileHandle!.sync();
     }
 
     async recover(): Promise<WalRecord[]> {
-        if (!this.fileHandle) {
-            throw new Error("WAL is not open");
-        }
-
+        this.ensureOpen();
         await this.writeQueue;
 
-        const buffer = await this.fileHandle.readFile();
+        const buffer = await this.fileHandle!.readFile();
         const records: WalRecord[] = [];
 
         let offset = 0;
@@ -96,14 +96,22 @@ export class WAL {
 
         // Remove an incomplete final record, if one exists
         if (validBytes < buffer.length) {
-            await this.fileHandle.truncate(validBytes);
+            await this.fileHandle!.truncate(validBytes);
         }
         return records;
     }
 
     async close(): Promise<void> {
         if (!this.fileHandle) return;
+        await this.writeQueue;
         await this.fileHandle.close();
         this.fileHandle = undefined;
+        this.closed = true;
+    }
+
+    private ensureOpen(): void {
+        if (!this.fileHandle || this.closed) {
+            throw new Error("WAL is not open");
+        }
     }
 }
