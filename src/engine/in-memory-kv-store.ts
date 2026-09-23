@@ -1,11 +1,7 @@
 import type { KVStore } from "./kv-store.js";
 
 export class InMemoryKVStore implements KVStore {
-    private store: Map<string, string>;
-
-    constructor() {
-        this.store = new Map<string, string>();
-    }
+    private readonly store = new Map<string, string>();
 
     async put(key: string, value: string): Promise<void> {
         this.validateKey(key);

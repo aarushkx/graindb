@@ -15,7 +15,7 @@ export function registerRoutes(app: FastifyInstance, store: KVStore): void {
     });
 
     app.get("/v1/stats", async () => {
-        return { keys: store.size() };
+        return { keys: await store.size() };
     });
 
     app.put<{ Params: KeyParams; Body: PutBody }>(
@@ -79,15 +79,15 @@ export function registerRoutes(app: FastifyInstance, store: KVStore): void {
         }
     });
 
-    app.get("/v1/kv/size", async (_request, reply) => {
-        try {
-            const size = await store.size();
-            return reply.status(200).send({ size });
-        } catch (error) {
-            return reply.status(400).send({
-                error:
-                    error instanceof Error ? error.message : "Invalid request",
-            });
-        }
-    });
+    // app.get("/v1/kv/size", async (_request, reply) => {
+    //     try {
+    //         const size = await store.size();
+    //         return reply.status(200).send({ size });
+    //     } catch (error) {
+    //         return reply.status(400).send({
+    //             error:
+    //                 error instanceof Error ? error.message : "Invalid request",
+    //         });
+    //     }
+    // });
 }
