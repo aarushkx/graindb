@@ -1,14 +1,29 @@
 import type { KVStore } from "./kv-store.js";
 import { WAL } from "../wal/wal.js";
 import { WalOperation, type WalRecord } from "../wal/wal-record.js";
+import { SSTableWriter } from "../sstable/sstable-writer.js";
+import { SSTableEntry } from "../sstable/sstable-record.js";
+import { SSTableCatalog } from "../sstable/sstable-catalog.js";
+import { Memtable } from "./memtable.js";
+import { SSTableReader } from "../sstable/sstable-reader.js";
 
 export class PersistentKVStore implements KVStore {
-    private readonly store = new Map<string, string>();
+    private readonly memtable = new Memtable();
+    private readonly sstableWriter: SSTableWriter;
+    private readonly sstableCatalog: SSTableCatalog;
 
-    constructor(private readonly wal: WAL) {}
+    constructor(
+        private readonly wal: WAL,
+        sstableDir = "./data/sstables",
+        private readonly memtableFlushThreshold = 3,
+    ) {
+        this.sstableWriter = new SSTableWriter(sstableDir);
+        this.sstableCatalog = new SSTableCatalog(sstableDir);
+    }
 
     async initialize(): Promise<void> {
         await this.wal.open();
+        await this.sstableCatalog.initialize();
         const records = await this.wal.recover();
         for (const record of records) {
             this.applyRecord(record);
@@ -24,19 +39,40 @@ export class PersistentKVStore implements KVStore {
             key,
             value,
         };
-
         await this.wal.appendAndSync(record);
-        this.store.set(key, value);
+        this.memtable.put(key, value);
+        await this.flushIfNeeded();
     }
 
     async get(key: string): Promise<string | undefined> {
         this.validateKey(key);
-        return this.store.get(key);
+
+        // Check memtable entry
+        const memtableEntry = this.memtable.get(key);
+        if (memtableEntry) {
+            if (memtableEntry.tombstone) return undefined;
+            return memtableEntry.value;
+        }
+
+        // Search SSTables from newest to oldest
+        const tables = this.sstableCatalog.getNewestFirst();
+        for (const table of tables) {
+            const reader = await SSTableReader.open(table.filePath);
+            const entry = reader.get(key);
+            if (!entry) continue;
+            if (entry.tombstone) return undefined;
+            return entry.value;
+        }
+
+        return undefined;
     }
 
     async delete(key: string): Promise<boolean> {
         this.validateKey(key);
-        if (!this.store.has(key)) return false;
+
+        // Check whether the key currently exists anywhere in the DB
+        const existing = await this.get(key);
+        if (existing === undefined) return false;
 
         const record: WalRecord = {
             operation: WalOperation.DELETE,
@@ -44,17 +80,58 @@ export class PersistentKVStore implements KVStore {
         };
 
         await this.wal.appendAndSync(record);
-        this.store.delete(key);
+        this.memtable.delete(key);
+        await this.flushIfNeeded();
 
         return true;
     }
 
     async size(): Promise<number> {
-        return this.store.size;
+        const keys = new Set<string>();
+        const tables = this.sstableCatalog.getOldestFirst();
+
+        for (const table of tables) {
+            const reader = await SSTableReader.open(table.filePath);
+            for (const entry of reader.getAll()) {
+                if (entry.tombstone) keys.delete(entry.key);
+                else keys.add(entry.key);
+            }
+        }
+
+        for (const [key, entry] of this.memtable.entries()) {
+            if (entry.tombstone) keys.delete(key);
+            else keys.add(key);
+        }
+
+        return keys.size;
     }
 
     async close(): Promise<void> {
         await this.wal.close();
+    }
+
+    private async flushIfNeeded(): Promise<void> {
+        if (this.memtable.size() < this.memtableFlushThreshold) return;
+        await this.flushMemtable();
+    }
+
+    private async flushMemtable(): Promise<void> {
+        if (this.memtable.isEmpty()) return;
+
+        const entries: SSTableEntry[] = [...this.memtable.entries()]
+            .sort(([keyA], [keyB]) => keyA.localeCompare(keyB))
+            .map(([key, entry]) => ({
+                key,
+                ...(entry.value !== undefined ? { value: entry.value } : {}),
+                tombstone: entry.tombstone,
+            }));
+
+        const id = this.sstableCatalog.nextId();
+        const fileName = `${String(id).padStart(6, "0")}.sst`;
+        const filePath = await this.sstableWriter.write(fileName, entries);
+        this.sstableCatalog.add({ id, fileName, filePath });
+        await this.wal.checkpoint();
+        this.memtable.clear();
     }
 
     private applyRecord(record: WalRecord): void {
@@ -63,10 +140,10 @@ export class PersistentKVStore implements KVStore {
                 if (record.value == undefined) {
                     throw new Error("PUT WAL record is missing a value");
                 }
-                this.store.set(record.key, record.value);
+                this.memtable.put(record.key, record.value);
                 break;
             case WalOperation.DELETE:
-                this.store.delete(record.key);
+                this.memtable.delete(record.key);
                 break;
             default:
                 throw new Error(`Unknown WAL operation: ${record.operation}`);
@@ -74,13 +151,13 @@ export class PersistentKVStore implements KVStore {
     }
 
     private validateKey(key: string): void {
-        if (typeof key !== "string" || key.trim().length === 0) {
-            throw new Error("Key cannot be empty or whitespace");
+        if (key.trim().length === 0) {
+            throw new Error("Key cannot be empty");
         }
     }
 
     private validateValue(value: string): void {
-        if (typeof value !== "string" || value.length === 0) {
+        if (value.length === 0) {
             throw new Error("Value cannot be empty");
         }
     }

@@ -23,3 +23,30 @@ A small persistent key-value database served over HTTP
 - [x] Ensure key/value survives server restart
 - [x] Implement graceful shutdown
 - [x] Properly close WAL file handles
+
+### V2
+
+- [x] Implement Memtable with value/tombstone states
+- [x] Define binary SSTable record format
+- [x] Implement SSTable serialization and deserialization
+- [x] Implement SSTable writer
+- [x] Write SSTables atomically through temporary files
+- [x] Sync SSTable files before installation
+- [x] Implement SSTable reader
+- [x] Validate SSTable magic, version, entry count and checksum
+- [x] Implement sorted SSTable entries
+- [x] Implement binary-search SSTable lookup
+- [x] Implement SSTable catalog
+- [x] Check existing SSTables on startup
+- [x] Assign monotonically increasing SSTable IDs
+- [x] Flush Memtable contents into immutable SSTables
+- [x] Support tombstones in Memtable
+- [x] Support tombstones in SSTables
+- [x] Read from Memtable before SSTables
+- [x] Search SSTables from newest to oldest
+- [x] Ensure newer SSTable values override older values
+- [x] Ensure tombstones hide older values
+- [x] Implement WAL checkpointing after successful SSTable flush
+- [x] Recover remaining WAL operations into the Memtable
+- [x] Preserve SSTables across database restarts
+- [x] Support multiple SSTables without overwriting previous files

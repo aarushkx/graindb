@@ -101,6 +101,26 @@ export class WAL {
         return records;
     }
 
+    // async checkpoint(): Promise<void> {
+    //     this.ensureOpen();
+    //     await this.writeQueue;
+    //     await this.fileHandle!.truncate(0);
+    //     await this.fileHandle!.sync();
+    // }
+
+    async checkpoint(): Promise<void> {
+        this.ensureOpen();
+        await this.writeQueue;
+
+        const truncateHandle = await open(this.filePath, "r+");
+        try {
+            await truncateHandle.truncate(0);
+            await truncateHandle.sync();
+        } finally {
+            await truncateHandle.close();
+        }
+    }
+
     async close(): Promise<void> {
         if (!this.fileHandle) return;
         await this.writeQueue;
