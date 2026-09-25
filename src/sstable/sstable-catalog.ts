@@ -39,6 +39,17 @@ export class SSTableCatalog {
         this.tables.sort((a, b) => a.id - b.id);
     }
 
+    replace(
+        oldTables: readonly SSTableMetadata[],
+        newTables: readonly SSTableMetadata[],
+    ): void {
+        const oldIds = new Set<number>(oldTables.map((table) => table.id));
+        this.tables = this.tables
+            .filter((table) => !oldIds.has(table.id))
+            .concat(newTables)
+            .sort((a, b) => a.id - b.id);
+    }
+
     getNewestFirst(): readonly SSTableMetadata[] {
         return [...this.tables].reverse();
     }

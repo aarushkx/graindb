@@ -6,19 +6,26 @@ import { SSTableEntry } from "../sstable/sstable-record.js";
 import { SSTableCatalog } from "../sstable/sstable-catalog.js";
 import { Memtable } from "./memtable.js";
 import { SSTableReader } from "../sstable/sstable-reader.js";
+import { CompactionManager } from "../compaction/compaction-manager.js";
 
 export class PersistentKVStore implements KVStore {
     private readonly memtable = new Memtable();
     private readonly sstableWriter: SSTableWriter;
     private readonly sstableCatalog: SSTableCatalog;
+    private readonly compactionManager: CompactionManager;
 
     constructor(
         private readonly wal: WAL,
         sstableDir = "./data/sstables",
-        private readonly memtableFlushThreshold = 3,
+        private readonly memtableFlushThreshold = 2,
+        private readonly compactionThreshold = 4,
     ) {
         this.sstableWriter = new SSTableWriter(sstableDir);
         this.sstableCatalog = new SSTableCatalog(sstableDir);
+        this.compactionManager = new CompactionManager(
+            this.sstableCatalog,
+            this.sstableWriter,
+        );
     }
 
     async initialize(): Promise<void> {
@@ -132,6 +139,12 @@ export class PersistentKVStore implements KVStore {
         this.sstableCatalog.add({ id, fileName, filePath });
         await this.wal.checkpoint();
         this.memtable.clear();
+        await this.compactIfNeeded();
+    }
+
+    private async compactIfNeeded(): Promise<void> {
+        if (this.sstableCatalog.count() < this.compactionThreshold) return;
+        await this.compactionManager.compact();
     }
 
     private applyRecord(record: WalRecord): void {

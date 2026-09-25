@@ -50,3 +50,10 @@ A small persistent key-value database served over HTTP
 - [x] Recover remaining WAL operations into the Memtable
 - [x] Preserve SSTables across database restarts
 - [x] Support multiple SSTables without overwriting previous files
+
+### V3
+
+- [x] Implement SSTable merging
+- [x] Implement safe replacement of compacted SSTables
+- [x] Implement automatic compaction triggering
+- [x] Integrate compaction with the storage engine
