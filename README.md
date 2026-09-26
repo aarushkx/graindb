@@ -73,3 +73,8 @@ A small persistent key-value database served over HTTP
 - [x] Identify and fix concurrent storage-path failures
 - [x] Benchmark different concurrency levels
 - [x] Analyze performance scaling and latency behavior
+- [x] Implement SSTable reader caching
+- [x] Reuse Bloom filters and sparse indexes across GET requests
+- [x] Invalidate cached readers after compaction
+- [x] Re-run the GET benchmark
+- [x] Compare optimized performance against the baseline

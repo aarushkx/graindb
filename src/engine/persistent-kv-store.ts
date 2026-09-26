@@ -8,6 +8,7 @@ import { Memtable } from "./memtable.js";
 import { SSTableReader } from "../sstable/sstable-reader.js";
 import { CompactionManager } from "../compaction/compaction-manager.js";
 import { AsyncMutex } from "./async-mutex.js";
+import { SSTableReaderCache } from "../sstable/sstable_reader-cache.js";
 
 export class PersistentKVStore implements KVStore {
     private readonly memtable = new Memtable();
@@ -15,6 +16,7 @@ export class PersistentKVStore implements KVStore {
     private readonly sstableCatalog: SSTableCatalog;
     private readonly compactionManager: CompactionManager;
     private readonly writeMutex = new AsyncMutex();
+    private readonly sstableReaderCache = new SSTableReaderCache();
 
     constructor(
         private readonly wal: WAL,
@@ -72,7 +74,8 @@ export class PersistentKVStore implements KVStore {
         // Search SSTables from newest to oldest
         const tables = this.sstableCatalog.getNewestFirst();
         for (const table of tables) {
-            const reader = await SSTableReader.open(table.filePath);
+            // const reader = await SSTableReader.open(table.filePath);
+            const reader = await this.sstableReaderCache.get(table.filePath);
             const entry = reader.get(key);
             if (!entry) continue;
             if (entry.tombstone) return undefined;
@@ -112,7 +115,8 @@ export class PersistentKVStore implements KVStore {
         const tables = this.sstableCatalog.getOldestFirst();
 
         for (const table of tables) {
-            const reader = await SSTableReader.open(table.filePath);
+            // const reader = await SSTableReader.open(table.filePath);
+            const reader = await this.sstableReaderCache.get(table.filePath);
             for (const entry of reader.getAll()) {
                 if (entry.tombstone) keys.delete(entry.key);
                 else keys.add(entry.key);
@@ -159,6 +163,7 @@ export class PersistentKVStore implements KVStore {
     private async compactIfNeeded(): Promise<void> {
         if (this.sstableCatalog.count() < this.compactionThreshold) return;
         await this.compactionManager.compact();
+        this.sstableReaderCache.clear();
     }
 
     private applyRecord(record: WalRecord): void {
