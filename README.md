@@ -64,3 +64,12 @@ A small persistent key-value database served over HTTP
 - [x] Integrate SSTable index into lookups
 - [x] Implement Bloom filter
 - [x] Integrate Bloom filter into SSTable reads
+
+### V6
+
+- [x] Build a repeatable benchmark client
+- [x] Measure request throughput and latency percentiles
+- [x] Measure benchmark errors and successful requests
+- [x] Identify and fix concurrent storage-path failures
+- [x] Benchmark different concurrency levels
+- [x] Analyze performance scaling and latency behavior

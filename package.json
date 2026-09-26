@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
+    "bench:put": "tsx src/bench/put-benchmark.ts",
+    "bench:get": "tsx src/bench/get-benchmark.ts",
     "build": "tsc",
     "lint": "eslint .",
     "test": "echo \"Error: no test specified\" && exit 1"

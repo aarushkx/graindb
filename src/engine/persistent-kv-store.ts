@@ -7,17 +7,19 @@ import { SSTableCatalog } from "../sstable/sstable-catalog.js";
 import { Memtable } from "./memtable.js";
 import { SSTableReader } from "../sstable/sstable-reader.js";
 import { CompactionManager } from "../compaction/compaction-manager.js";
+import { AsyncMutex } from "./async-mutex.js";
 
 export class PersistentKVStore implements KVStore {
     private readonly memtable = new Memtable();
     private readonly sstableWriter: SSTableWriter;
     private readonly sstableCatalog: SSTableCatalog;
     private readonly compactionManager: CompactionManager;
+    private readonly writeMutex = new AsyncMutex();
 
     constructor(
         private readonly wal: WAL,
         sstableDir = "./data/sstables",
-        private readonly memtableFlushThreshold = 2,
+        private readonly memtableFlushThreshold = 1000,
         private readonly compactionThreshold = 4,
     ) {
         this.sstableWriter = new SSTableWriter(sstableDir);
@@ -38,17 +40,23 @@ export class PersistentKVStore implements KVStore {
     }
 
     async put(key: string, value: string): Promise<void> {
-        this.validateKey(key);
-        this.validateValue(value);
+        const release = await this.writeMutex.acquire();
 
-        const record: WalRecord = {
-            operation: WalOperation.PUT,
-            key,
-            value,
-        };
-        await this.wal.appendAndSync(record);
-        this.memtable.put(key, value);
-        await this.flushIfNeeded();
+        try {
+            this.validateKey(key);
+            this.validateValue(value);
+
+            const record: WalRecord = {
+                operation: WalOperation.PUT,
+                key,
+                value,
+            };
+            await this.wal.appendAndSync(record);
+            this.memtable.put(key, value);
+            await this.flushIfNeeded();
+        } finally {
+            release();
+        }
     }
 
     async get(key: string): Promise<string | undefined> {
@@ -75,22 +83,28 @@ export class PersistentKVStore implements KVStore {
     }
 
     async delete(key: string): Promise<boolean> {
-        this.validateKey(key);
+        const release = await this.writeMutex.acquire();
 
-        // Check whether the key currently exists anywhere in the DB
-        const existing = await this.get(key);
-        if (existing === undefined) return false;
+        try {
+            this.validateKey(key);
 
-        const record: WalRecord = {
-            operation: WalOperation.DELETE,
-            key,
-        };
+            // Check whether the key currently exists anywhere in the DB
+            const existing = await this.get(key);
+            if (existing === undefined) return false;
 
-        await this.wal.appendAndSync(record);
-        this.memtable.delete(key);
-        await this.flushIfNeeded();
+            const record: WalRecord = {
+                operation: WalOperation.DELETE,
+                key,
+            };
 
-        return true;
+            await this.wal.appendAndSync(record);
+            this.memtable.delete(key);
+            await this.flushIfNeeded();
+
+            return true;
+        } finally {
+            release();
+        }
     }
 
     async size(): Promise<number> {

@@ -96,7 +96,7 @@ export class WAL {
 
         // Remove an incomplete final record, if one exists
         if (validBytes < buffer.length) {
-            await this.fileHandle!.truncate(validBytes);
+            await this.truncateFile(validBytes);
         }
         return records;
     }
@@ -111,14 +111,7 @@ export class WAL {
     async checkpoint(): Promise<void> {
         this.ensureOpen();
         await this.writeQueue;
-
-        const truncateHandle = await open(this.filePath, "r+");
-        try {
-            await truncateHandle.truncate(0);
-            await truncateHandle.sync();
-        } finally {
-            await truncateHandle.close();
-        }
+        await this.truncateFile(0);
     }
 
     async close(): Promise<void> {
@@ -127,6 +120,16 @@ export class WAL {
         await this.fileHandle.close();
         this.fileHandle = undefined;
         this.closed = true;
+    }
+
+    private async truncateFile(length: number): Promise<void> {
+        const truncateHandle = await open(this.filePath, "r+");
+        try {
+            await truncateHandle.truncate(length);
+            await truncateHandle.sync();
+        } finally {
+            await truncateHandle.close();
+        }
     }
 
     private ensureOpen(): void {
