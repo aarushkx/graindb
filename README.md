@@ -57,3 +57,10 @@ A small persistent key-value database served over HTTP
 - [x] Implement safe replacement of compacted SSTables
 - [x] Implement automatic compaction triggering
 - [x] Integrate compaction with the storage engine
+
+### V4
+
+- [x] Implement sparse SSTable index
+- [x] Integrate SSTable index into lookups
+- [x] Implement Bloom filter
+- [x] Integrate Bloom filter into SSTable reads
